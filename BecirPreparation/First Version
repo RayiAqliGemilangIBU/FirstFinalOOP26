@@ -1,0 +1,228 @@
+package one;
+
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+import java.lang.reflect.Field;
+import java.text.DecimalFormat;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.stream.Collectors;
+
+enum CaseFormatter {
+    ORDINARY, UPPER_CASE, LOWER_CASE
+}
+
+enum NumberFormatter {
+    COMMA, PERCENTAGE
+}
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.FIELD)
+@interface WriteConcerns {
+    CaseFormatter case_format() default CaseFormatter.ORDINARY;
+    NumberFormatter number_format() default NumberFormatter.COMMA;
+}
+
+class Book {
+    @WriteConcerns
+    private Date date;
+    @WriteConcerns(case_format = CaseFormatter.ORDINARY)
+    private String quarter;
+    private int qtr;
+    private int year;
+    @WriteConcerns(case_format = CaseFormatter.UPPER_CASE)
+    private String customerId;
+    @WriteConcerns(number_format = NumberFormatter.COMMA)
+    private double totalAmount;
+    @WriteConcerns(number_format = NumberFormatter.PERCENTAGE)
+    private double profitPercentage; 
+    private double profitInr;
+    private double costPrice;
+
+    public Date getDate() { return this.date; }
+    public String getQuarter() { return this.quarter; }
+    public int getQtr() { return this.qtr; }
+    public int getYear() { return this.year; }
+    public String getCustomerId() { return this.customerId; }
+    public double getTotalAmount() { return this.totalAmount; }
+    public double getProfitPercentage() { return this.profitPercentage; }
+    public double getProfitInr() { return this.profitInr; }
+    public double getCostPrice() { return this.costPrice; }
+
+    public Book(BookBuilder b) {
+        this.date = b.date;
+        this.quarter = b.quarter;
+        this.qtr = b.qtr;
+        this.year = b.year;
+        this.customerId = b.customerId;
+        this.totalAmount = b.totalAmount;
+        this.profitPercentage = b.profitPercentage; 
+        this.profitInr = b.profitInr;
+        this.costPrice = b.costPrice;
+    }
+
+    public static class BookBuilder {
+        private Date date;
+        private String quarter;
+        private int qtr;
+        private int year;
+        private String customerId;
+        private double totalAmount;
+        private double profitPercentage;
+        private double profitInr;
+        private double costPrice;
+
+        public BookBuilder() {}
+
+        public BookBuilder setDate(Date val) { this.date = val; return this; }
+        public BookBuilder setQuarter(String val) { this.quarter = val; return this; }
+        public BookBuilder setQtr(int val) { this.qtr = val; return this; }
+        public BookBuilder setYear(int val) { this.year = val; return this; }
+        public BookBuilder setCustomerId(String val) { this.customerId = val; return this; }
+        public BookBuilder setTotalAmount(double val) { this.totalAmount = val; return this; }
+        public BookBuilder setProfitPercentage(double val) { this.profitPercentage = val; return this; }
+        public BookBuilder setProfitInr(double val) { this.profitInr = val; return this; }
+        public BookBuilder setCostPrice(double val) { this.costPrice = val; return this; }
+        
+        public Book build() {
+            return new Book(this);
+        }
+    }
+}
+
+class WrongFormatException extends RuntimeException {
+    public WrongFormatException(String m) { super(m); }
+    public WrongFormatException(String m, Throwable e) { super(m, e); }
+}
+
+class FinalPrep {
+    private List<Book> books;
+    private static SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+
+    public FinalPrep(String fileName) {
+        books = loadBooks(fileName);
+    }
+
+    public List<Book> getBooks() {
+        return this.books;
+    }
+
+    public static List<Book> loadBooks(String fileName) {
+        List<Book> result = new ArrayList<>();
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(fileName))) {
+            List<String> lines = reader.lines().collect(Collectors.toList());
+            for (int i = 1; i < lines.size(); i++) {
+                String[] temp = lines.get(i).split(";");
+                if (temp[0].equals("") || temp[4].equals("") || temp[5].equals(""))
+                    throw new WrongFormatException("Values are empty", new ClassCastException());
+                
+                String rawPercentage = temp[6].replace("%", "");
+                
+                result.add(
+                         new Book.BookBuilder()
+                                 .setDate(dateFormat.parse(temp[0]))
+                                 .setQuarter(temp[1])
+                                 .setQtr(Integer.parseInt(temp[2]))
+                                 .setYear(Integer.parseInt(temp[3]))
+                                 .setCustomerId(temp[4])
+                                 .setTotalAmount(Double.parseDouble(temp[5]))
+                                 .setProfitPercentage(Double.parseDouble(rawPercentage))
+                                 .setProfitInr(Double.parseDouble(temp[7]))
+                                 .setCostPrice(Double.parseDouble(temp[8]))
+                                 .build()
+                );
+            }
+            return result;
+        } catch (Exception e) {
+            if (e instanceof WrongFormatException) {
+                throw (WrongFormatException) e;
+            }
+            throw new RuntimeException(e);
+        }
+    }
+}
+
+class ReportWriter {
+    public static void writeReport(String outputFileName, List<Book> books) {
+        Class<?> clazz = Book.class;
+        Field[] fields = clazz.getDeclaredFields();
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+
+        try {
+            BufferedWriter writer = new BufferedWriter(new FileWriter(outputFileName));
+            
+            
+            for (int i = 0; i < fields.length; i++) {
+                writer.write(fields.length - 1 == i ?
+                        fields[i].getName().concat("\n") :
+                        fields[i].getName().concat(";"));
+            }
+
+
+            for (Book book : books) {
+                for (int i = 0; i < fields.length; i++) {
+                    fields[i].setAccessible(true);
+                    Object val = fields[i].get(book);
+                    
+         
+                    String stringValue = "";
+                    if (val != null) {
+                        if (val instanceof Date) {
+                            stringValue = dateFormat.format((Date) val);
+                        } else {
+                            stringValue = val.toString();
+                        }
+                    }
+
+                    if (fields[i].isAnnotationPresent(WriteConcerns.class)) {
+                        if (val instanceof String) {
+                            CaseFormatter format = fields[i].getAnnotation(WriteConcerns.class).case_format();
+                            if (format == CaseFormatter.LOWER_CASE) {
+                                writer.write(fields.length - 1 == i ?
+                                        stringValue.toLowerCase().concat("\n") :
+                                        stringValue.toLowerCase().concat(";"));
+                            } else if (format == CaseFormatter.UPPER_CASE) {
+                                writer.write(fields.length - 1 == i ?
+                                        stringValue.toUpperCase().concat("\n") :
+                                        stringValue.toUpperCase().concat(";"));
+                            } else {
+                                writer.write(fields.length - 1 == i ?
+                                        stringValue.concat("\n") :
+                                        stringValue.concat(";"));
+                            }
+                        } else {
+                            NumberFormatter formatv2 = fields[i].getAnnotation(WriteConcerns.class).number_format();
+                            if (formatv2 == NumberFormatter.PERCENTAGE) {
+                                writer.write(fields.length - 1 == i ?
+                                        stringValue.concat("%\n") :
+                                        stringValue.concat("%;"));
+                            } else {
+                                DecimalFormat df = new DecimalFormat("#,###.##");
+                                writer.write(fields.length - 1 == i ?
+                                        df.format(val).concat("\n") :
+                                        df.format(val).concat(";"));
+                            }
+                        }
+                    } else {
+                        writer.write(fields.length - 1 == i ?
+                                stringValue.concat("\n") :
+                                stringValue.concat(";"));
+                    }
+                }
+            }
+            writer.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+}
